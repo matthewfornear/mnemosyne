@@ -1,3 +1,32 @@
+# PHP Version Usage (Windows/CLI)
+
+## How to Use the PHP Scripts
+
+1. **Install PHP 8.2+** (with cURL enabled) and ensure it is in your PATH.
+2. Run the PHP group scraper:
+   ```sh
+   php scripts/facebook_groups_scraper.php
+   ```
+   - Output: `output/groups_php.jsonl`
+   - State: `output/groups_state_php.json`
+3. Run the PHP group enricher:
+   ```sh
+   php scripts/enrich_groups_with_hovercard.php
+   ```
+   - Output: `output/groups_enriched_php.jsonl`
+   - Skips already-enriched groups for safe resumption
+
+## Why Use the PHP Version?
+- The PHP scripts are direct ports of the Python versions and are provided for environments where PHP is preferred or Python is unavailable.
+- They produce separate output files (`*_php.jsonl`) to avoid conflicts with the Python outputs.
+
+## Sleep Mode
+- When running the PHP enrichment script, you will be prompted to enable or disable sleep mode.
+- **Sleep mode** introduces a random delay (1.5–4.0 seconds) between requests to reduce the risk of Facebook rate-limiting or blocking your account.
+- **Disabling sleep mode** (fast mode) is NOT recommended for production scraping, as it may result in temporary or permanent blocks from Facebook due to too many rapid requests.
+
+---
+
 # Facebook Groups Scraper & Enricher
 
 ## Quick Start (macOS/Linux)
