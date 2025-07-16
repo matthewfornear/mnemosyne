@@ -44,6 +44,27 @@ pip install -r requirements.txt
 
 ---
 
+## Nimble Proxy Setup
+
+To use Nimble proxies, create a file at `settings/nimble_settings.json` with your credentials:
+
+```json
+{
+    "username": "account-your_account-pipeline-your_pipeline",
+    "password": "YOUR_NIMBLE_PASSWORD",
+    "host": "ip.nimbleway.com",
+    "port": "7000"
+}
+```
+- **username**: Your full Nimble pipeline username (from the Nimble dashboard)
+- **password**: Your Nimble pipeline password
+- **host**: Should be `ip.nimbleway.com` (per Nimble documentation)
+- **port**: Usually `7000` (check your Nimble dashboard)
+
+The scripts will automatically use this file for all proxy requests. No environment variables are needed.
+
+---
+
 ## Usage
 
 ### 1. Scrape Groups
@@ -64,21 +85,14 @@ python scripts/enrich_groups_with_hovercard.py
 
 ---
 
-## Using Nimble Proxy
-All requests should be routed through Nimble for privacy and reliability:
-1. Get your Nimble proxy URL (e.g., `http://user:pass@gw.nimbleway.com:XXXX`)
-2. Set the environment variable before running either script:
-   ```sh
-   export NIMBLE_PROXY="http://user:pass@gw.nimbleway.com:XXXX"
-   python scripts/facebook_groups_scraper.py
-   # or
-   python scripts/enrich_groups_with_hovercard.py
-   ```
-   On Windows PowerShell:
-   ```powershell
-   $env:NIMBLE_PROXY="http://user:pass@gw.nimbleway.com:XXXX"
-   python scripts/facebook_groups_scraper.py
-   ```
+## Troubleshooting Nimble Proxy
+- If you see DNS errors (e.g., `Failed to resolve 'ip.nimbleway.com'`), check your DNS settings or try a different network.
+- If you see `402 Payment Required`, your Nimble account may be out of credit or not authorized for the pipeline.
+- Double-check your `nimble_settings.json` for typos and correct credentials.
+- You can test DNS with:
+  ```sh
+  nslookup ip.nimbleway.com
+  ```
 
 ---
 
@@ -86,13 +100,6 @@ All requests should be routed through Nimble for privacy and reliability:
 - You must update session-specific POST fields and headers in the scripts for each new session (see comments in code).
 - The enrichment script does **not** fetch group descriptions, as these are not available in the hovercard API.
 - For large jobs, both scripts are safe to stop and resume.
-
----
-
-## Troubleshooting
-- If you get HTML or login pages instead of JSON, your cookies or session fields are likely expired or incorrect.
-- If you hit rate limits, increase the random sleep interval in the scripts.
-- For more fields (like group description), you will need to adapt the enrichment script to use a different Facebook GraphQL query or scrape HTML.
 
 ---
 
