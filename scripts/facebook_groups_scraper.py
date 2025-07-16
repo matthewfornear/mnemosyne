@@ -17,9 +17,19 @@ COOKIE_FILE = os.path.join(PARENT_DIR, "settings", "cookie.json")
 OUTPUT_FILE = os.path.join(PARENT_DIR, "output", "groups.jsonl")
 STATE_FILE = os.path.join(PARENT_DIR, "output", "groups_state.json")
 
-# Optional: Use Nimble proxy if NIMBLE_PROXY env var is set
-NIMBLE_PROXY = os.getenv('NIMBLE_PROXY')  # e.g., "http://user:pass@gw.nimbleway.com:XXXX"
-PROXIES = {"http": NIMBLE_PROXY, "https": NIMBLE_PROXY} if NIMBLE_PROXY else None
+# --- Nimble Proxy Integration ---
+NIMBLE_SETTINGS_FILE = os.path.join(PARENT_DIR, "settings", "nimble_settings.json")
+if os.path.exists(NIMBLE_SETTINGS_FILE):
+    with open(NIMBLE_SETTINGS_FILE, "r", encoding="utf-8") as f:
+        nimble_settings = json.load(f)
+    NIMBLE_USERNAME = nimble_settings.get("username")
+    NIMBLE_PASSWORD = nimble_settings.get("password")
+    NIMBLE_HOST = nimble_settings.get("host", "gw.nimbleway.com")
+    NIMBLE_PORT = nimble_settings.get("port", "7000")
+    NIMBLE_PROXY = f"http://{NIMBLE_USERNAME}:{NIMBLE_PASSWORD}@{NIMBLE_HOST}:{NIMBLE_PORT}"
+    PROXIES = {"http": NIMBLE_PROXY, "https": NIMBLE_PROXY}
+else:
+    PROXIES = None
 
 # --- CONFIGURATION ---
 # NOTE: Move your cookie.json to /settings/cookie.json before running.
