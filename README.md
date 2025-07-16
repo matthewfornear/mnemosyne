@@ -1,46 +1,21 @@
 # Facebook Groups Scraper & Enricher
 
-## Overview
-This project allows you to scrape Facebook group search results and enrich them with additional group info using Facebook's internal GraphQL APIs. It is designed for robustness, deduplication, resumability, and can be run through the Nimble proxy network for privacy or rate limit avoidance.
+## Quick Start (macOS/Linux)
 
----
-
-## Requirements
-- Python 3.8+
-- Facebook account (for cookies)
-- `requests` and `zstandard` Python packages
-
-Install dependencies:
+### Install dependencies
 ```sh
 pip install -r requirements.txt
 ```
 
----
+### Run the main scraper
+```sh
+python scripts/facebook_groups_scraper.py
+```
 
-## Setup
-1. **Get your Facebook cookies**
-   - Log in to Facebook in your browser
-   - Open DevTools > Application > Cookies > Copy all cookies as JSON
-   - Save as `settings/cookie.json`
-
-2. **Create output directories**
-   - The scripts will use `output/` for all results
-   - The scripts will use `settings/cookie.json` for cookies
-
-   Example `settings/cookies_example.json`:
-   ```json
-   {
-       "c_user": "YOUR_C_USER_HERE",
-       "datr": "YOUR_DATR_HERE",
-       "oo": "YOUR_OO_HERE",
-       "presence": "YOUR_PRESENCE_HERE",
-       "ps_l": "YOUR_PS_L_HERE",
-       "ps_n": "YOUR_PS_N_HERE",
-       "sb": "YOUR_SB_HERE",
-       "wd": "YOUR_WD_HERE",
-       "xs": "YOUR_XS_HERE"
-   }
-   ```
+### Run the enrichment script
+```sh
+python scripts/enrich_groups_with_hovercard.py
+```
 
 ---
 
@@ -100,6 +75,30 @@ python scripts/enrich_groups_with_hovercard.py
 - You must update session-specific POST fields and headers in the scripts for each new session (see comments in code).
 - The enrichment script does **not** fetch group descriptions, as these are not available in the hovercard API.
 - For large jobs, both scripts are safe to stop and resume.
+
+---
+
+## Windows PowerShell Usage
+
+### Install dependencies
+```powershell
+pip install -r requirements.txt
+```
+
+### Run the main scraper
+```powershell
+python scripts/facebook_groups_scraper.py
+```
+
+### Run the enrichment script
+```powershell
+python scripts/enrich_groups_with_hovercard.py
+```
+
+### Test DNS
+```powershell
+nslookup ip.nimbleway.com
+```
 
 ---
 
