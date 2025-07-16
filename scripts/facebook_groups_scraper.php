@@ -84,7 +84,16 @@ $HEADERS = [
 ];
 $DOC_ID = "9960465747398298";
 $SEARCH_TEXT = getenv('SEARCH_TEXT') ?: 'Dallas, TX';
-$SLEEP_BETWEEN_REQUESTS = [1.5, 4.0];
+// Ask user if they want sleep mode
+echo "Enable sleep mode between requests? [y/N]: ";
+$sleep_mode = strtolower(trim(fgets(STDIN)));
+if ($sleep_mode === 'y' || $sleep_mode === 'yes') {
+    echo "Sleep mode enabled.\n";
+    $SLEEP_BETWEEN_REQUESTS = [1.5, 4.0];
+} else {
+    echo "Sleep mode disabled.\n";
+    $SLEEP_BETWEEN_REQUESTS = [0.1, 0.2];
+}
 
 // --- LOAD COOKIES ---
 $COOKIES = load_json($COOKIE_FILE);
@@ -215,30 +224,83 @@ function get_next_cursor_php($response) {
     return $response["data"]["serpResponse"]["results"]["page_info"]["end_cursor"] ?? null;
 }
 
-// --- MAIN LOOP ---
-$done = false;
-while (!$done) {
-    echo "Fetching page with cursor: ".($cursor ?: 'null')."\n";
-    try {
-        $response = fetch_page_php($cursor, $COOKIES, $HEADERS, $PROXIES, $USER_VARIABLES_JSON, $DOC_ID);
-    } catch (Exception $e) {
-        echo "Request failed: {$e->getMessage()}\n";
-        break;
+// --- Search Input Selection ---
+echo "Choose search input mode: [1] Use facebook_group_urls.txt [2] Enter search manually\n";
+$search_mode = prompt("Enter 1 or 2 (default 1): ");
+$search_queries = [];
+if ($search_mode === "2") {
+    $manual_search = prompt("Enter your search text (e.g. Dallas, TX): ");
+    $search_queries[] = $manual_search;
+} else {
+    $url_file = "$PARENT_DIR/settings/facebook_group_urls.txt";
+    if (!file_exists($url_file)) {
+        exit("facebook_group_urls.txt not found in settings directory.\n");
     }
-    $new_groups = 0;
-    foreach (extract_groups_php($response) as $group) {
-        if (!isset($seen_ids[$group["id"]])) {
-            append_group_php($group, $seen_ids, $OUTPUT_FILE);
-            $new_groups++;
+    $lines = file($url_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        // Extract the query from the URL
+        if (preg_match('/[?&]q=([^&]+)/', $line, $matches)) {
+            $decoded = urldecode($matches[1]);
+            $search_queries[] = $decoded;
+            $no_comma = str_replace(',', '', $decoded);
+            if ($no_comma !== $decoded) {
+                $search_queries[] = $no_comma;
+            }
         }
     }
-    save_state_php($cursor, $seen_ids, $STATE_FILE);
-    echo "Added $new_groups new groups. Total: ".count($seen_ids)."\n";
-    $next_cursor = get_next_cursor_php($response);
-    if (!$next_cursor || $new_groups == 0) {
-        echo "No more pages or no new groups found.\n";
-        break;
+    // Remove duplicates
+    $search_queries = array_unique($search_queries);
+    if (empty($search_queries)) {
+        exit("No valid search queries found in facebook_group_urls.txt.\n");
     }
-    $cursor = $next_cursor;
-    random_sleep($SLEEP_BETWEEN_REQUESTS[0], $SLEEP_BETWEEN_REQUESTS[1]);
+}
+
+// --- MAIN LOOP ---
+foreach ($search_queries as $i => $SEARCH_TEXT) {
+    $total_queries = count($search_queries);
+    echo "\n==== Running search ".($i+1)."/$total_queries: $SEARCH_TEXT ====" . "\n";
+    // Reset cursor and seen_ids for each search
+    if (file_exists($STATE_FILE)) {
+        $state = load_json($STATE_FILE);
+        $cursor = $state["cursor"] ?? null;
+        $seen_ids = array_flip($state["seen_ids"] ?? []);
+    } else {
+        $cursor = null;
+        $seen_ids = [];
+    }
+    $done = false;
+    while (!$done) {
+        echo "Fetching page with cursor: ".($cursor ?: 'null')."\n";
+        try {
+            // Update USER_VARIABLES_JSON with the current search text
+            $variables = json_decode($USER_VARIABLES_JSON, true);
+            $variables["text"] = $SEARCH_TEXT;
+            if (isset($variables["args"])) {
+                $variables["args"]["text"] = $SEARCH_TEXT;
+            }
+            $USER_VARIABLES_JSON_THIS = json_encode($variables);
+            // Print POST data for debugging (only for this query)
+            echo "POST variables: ".$USER_VARIABLES_JSON_THIS."\n";
+            $response = fetch_page_php($cursor, $COOKIES, $HEADERS, $PROXIES, $USER_VARIABLES_JSON_THIS, $DOC_ID);
+        } catch (Exception $e) {
+            echo "Request failed: {$e->getMessage()}\n";
+            break;
+        }
+        $new_groups = 0;
+        foreach (extract_groups_php($response) as $group) {
+            if (!isset($seen_ids[$group["id"]])) {
+                append_group_php($group, $seen_ids, $OUTPUT_FILE);
+                $new_groups++;
+            }
+        }
+        save_state_php($cursor, $seen_ids, $STATE_FILE);
+        echo "Added $new_groups new groups. Total: ".count($seen_ids)."\n";
+        $next_cursor = get_next_cursor_php($response);
+        if (!$next_cursor || $new_groups == 0) {
+            echo "No more pages or no new groups found.\n";
+            break;
+        }
+        $cursor = $next_cursor;
+        random_sleep($SLEEP_BETWEEN_REQUESTS[0], $SLEEP_BETWEEN_REQUESTS[1]);
+    }
 } 
