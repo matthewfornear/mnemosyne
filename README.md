@@ -46,16 +46,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-### 1. Run the Pipeline with main.py
-You can use `main.py` to automate scraping for multiple search terms:
-- Place your search terms or Facebook group search URLs (one per line) in `settings/facebook_group_urls.txt`.
-- Run:
-  ```sh
-  python main.py
-  ```
-- If the file is missing, you will be prompted to enter a search term or URL in the terminal.
-
-### 2. Scrape Groups (manual)
+### 1. Scrape Groups
 Run the main scraper to collect group IDs, names, and URLs:
 ```sh
 python scripts/facebook_groups_scraper.py
@@ -63,7 +54,7 @@ python scripts/facebook_groups_scraper.py
 - Output: `output/groups.jsonl`
 - State: `output/groups_state.json` (for resumability)
 
-### 3. Enrich Groups
+### 2. Enrich Groups
 Run the enrichment script to fetch member count and privacy for each group:
 ```sh
 python scripts/enrich_groups_with_hovercard.py
@@ -74,19 +65,19 @@ python scripts/enrich_groups_with_hovercard.py
 ---
 
 ## Using Nimble Proxy
-To route all requests through Nimble:
+All requests should be routed through Nimble for privacy and reliability:
 1. Get your Nimble proxy URL (e.g., `http://user:pass@gw.nimbleway.com:XXXX`)
 2. Set the environment variable before running either script:
    ```sh
    export NIMBLE_PROXY="http://user:pass@gw.nimbleway.com:XXXX"
-   python facebook_groups_scraper.py
+   python scripts/facebook_groups_scraper.py
    # or
-   python enrich_groups_with_hovercard.py
+   python scripts/enrich_groups_with_hovercard.py
    ```
    On Windows PowerShell:
    ```powershell
    $env:NIMBLE_PROXY="http://user:pass@gw.nimbleway.com:XXXX"
-   python facebook_groups_scraper.py
+   python scripts/facebook_groups_scraper.py
    ```
 
 ---
@@ -101,7 +92,7 @@ To route all requests through Nimble:
 ## Troubleshooting
 - If you get HTML or login pages instead of JSON, your cookies or session fields are likely expired or incorrect.
 - If you hit rate limits, increase the random sleep interval in the scripts.
-- For more fields (like group description), you will need to adapt the enrichment script to use a different Facebook GraphQL query.
+- For more fields (like group description), you will need to adapt the enrichment script to use a different Facebook GraphQL query or scrape HTML.
 
 ---
 
