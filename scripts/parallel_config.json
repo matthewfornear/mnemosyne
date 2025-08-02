@@ -1,0 +1,50 @@
+{
+    "scaling": {
+        "total_searches": 34000,
+        "target_calls_per_search": 1000,
+        "max_concurrent_searches": 10,
+        "max_concurrent_requests_per_search": 3
+    },
+    "rate_limiting": {
+        "rate_limit_delay_min": 2.0,
+        "rate_limit_delay_max": 5.0,
+        "search_cooldown_min": 30.0,
+        "search_cooldown_max": 60.0,
+        "proxy_rotation_interval": 100
+    },
+    "proxy": {
+        "enabled": true,
+        "proxy_count": 5,
+        "base_port": 7000,
+        "fallback_to_direct": true
+    },
+    "output": {
+        "output_directory": "output",
+        "state_directory": "output/states",
+        "log_file": "parallel_scraper.log",
+        "summary_file": "parallel_scraper_summary.json"
+    },
+    "search_terms": {
+        "cities": [
+            "Dallas", "Houston", "Austin", "San Antonio", "Fort Worth", "Arlington", "Plano", "Irving",
+            "Frisco", "McKinney", "Denton", "Garland", "Grand Prairie", "Mesquite", "Carrollton",
+            "McAllen", "Waco", "Amarillo", "Lubbock", "El Paso", "Corpus Christi", "Laredo",
+            "Brownsville", "Killeen", "Beaumont", "Abilene", "Odessa", "Midland", "Tyler", "Wichita Falls"
+        ],
+        "states": ["TX", "CA", "FL", "NY", "PA", "IL", "OH", "GA", "NC", "MI", "NJ", "VA", "WA", "AZ", "MA"],
+        "variations": ["neighborhood", "community", "local", "area", "region", "district", "zone"],
+        "areas": ["downtown", "uptown", "midtown", "suburbs", "metro", "greater", "north", "south", "east", "west"]
+    },
+    "facebook": {
+        "session_parameters": {
+            "x_fb_lsd": "QtHMiXCRHid0cuO5v247AY",
+            "fb_dtsg": "NAfu9CKvo5n9HQ7oc2uuNcExCweYm0zG6-AzKsJLuPk1O6V7LzEXk4g:43:1750474603",
+            "jazoest": "25410",
+            "__req": "6",
+            "__rev": "1025363761",
+            "__s": "u71sjo:oem9po:9r0wa0",
+            "__hsi": "7533292342787910145",
+            "doc_id": "24258477577126445"
+        }
+    }
+} 
