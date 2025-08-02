@@ -1,2 +1,9 @@
 output/
-settings/cookie.json 
+settings/cookie.json
+settings/accounts.json
+settings/accounts/
+settings/nimble_settings.json
+*.log
+__pycache__/
+*.pyc
+.DS_Store 
