@@ -1,334 +1,328 @@
-# Facebook Groups Scraper
+# Facebook Groups Scraper with Account Rotation
 
-A powerful, multi-account Facebook Groups scraper with support for parallel processing, proxy rotation, and URL-based search terms.
+This updated Facebook Groups Scraper now supports multiple account rotation to avoid rate limiting and increase scraping efficiency.
 
+## Features
 
-facebook-groups-scraper/
-├── scripts/
-│   ├── facebook_groups_scraper.py          # Single-threaded scraper
-│   ├── multi_account_parallel_scraper.py   # Multi-account parallel scraper
-│   ├── run_multi_account_scraper.py        # Multi-account launcher
-│   ├── manage_accounts.py                  # Account management tool
-│   └── generate_urls.py                    # URL generation tool
-├── settings/
-│   ├── cookie.json                         # Single account cookies
-│   ├── accounts.json                       # Multi-account configuration
-│   ├── accounts/                           # Account-specific files
-│   │   ├── cookie_1.json
-│   │   ├── cookie_2.json
-│   │   └── ...
-│   ├── facebook_group_urls.txt             # Search URLs
-│   └── nimble_settings.json                # Proxy configuration
-├── output/
-│   ├── groups.jsonl                        # Scraped groups data
-│   ├── states/                             # Progress state files
-│   └── logs/                               # Log files
-└── README.md
-```
+- **Multi-Account Support**: Uses accounts from `settings/bought_accounts.json`
+- **Automatic Account Rotation**: Switches accounts when rate limited
+- **Cookie Generation**: Automated cookie generation for all accounts
+- **Progress Tracking**: Saves progress and can resume from where it left off
+- **Rate Limiting Detection**: Automatically detects and handles Facebook rate limiting
 
-## 🛠️ Installation
+## Setup Instructions
 
-### **Prerequisites**
+### 1. Install Dependencies
+
 ```bash
-pip install requests zstandard
+pip install -r requirements.txt
 ```
 
-### **Setup Steps**
+### 2. Install Chrome WebDriver
 
-#### **1. Single Account Setup**
+The cookie generator requires Chrome WebDriver. You can install it automatically:
+
 ```bash
-# Copy your Facebook cookies to settings/cookie.json
-# Format:
-{
-    "c_user": "YOUR_USER_ID",
-    "datr": "YOUR_DATR_COOKIE",
-    "xs": "YOUR_XS_COOKIE",
-    # ... other cookies
-}
+pip install webdriver-manager
 ```
 
-#### **2. Multi-Account Setup**
-```bash
-# Run account manager
-python scripts/manage_accounts.py
+Or download it manually from: https://chromedriver.chromium.org/
 
-# Add accounts (option 2)
-# Enter email, password, Facebook email, Facebook password
+**Important**: Make sure you have Google Chrome installed on your system.
 
-# Create cookie templates (option 5)
-# Update cookie files with real session data
-```
+### 3. Configure Your Accounts
 
-#### **3. URL Setup**
-```bash
-# Generate sample URLs
-python scripts/generate_urls.py
-# Choose option 2 for sample URLs
+Your accounts are already configured in `settings/bought_accounts.json`. The file should look like this:
 
-# Or create custom URLs file
-# Edit settings/facebook_group_urls.txt
-```
-
-## 📋 Usage
-
-### **Single Account Scraper**
-```bash
-python scripts/facebook_groups_scraper.py
-```
-
-**Features:**
-- Uses `facebook_group_urls.txt` for search terms
-- Tracks progress across URLs
-- Resumes from last processed URL
-- Target: 1000 GraphQL calls
-
-### **Multi-Account Parallel Scraper**
-```bash
-python scripts/run_multi_account_scraper.py
-```
-
-**Features:**
-- Multiple accounts with different IPs
-- Parallel processing (15+ concurrent workers)
-- Smart rate limiting per account
-- Massive scale: 34,000 searches × 1,000 calls each
-
-## ⚙️ Configuration
-
-### **Account Configuration** (`settings/accounts.json`)
 ```json
 {
     "accounts": [
         {
-            "account_id": "account_1",
-            "email": "user1@example.com",
-            "password": "password1",
-            "facebook_email": "fb1@example.com",
-            "facebook_password": "fbpass1",
-            "cookie_file": "cookie_1.json",
-            "proxy_config": {
-                "enabled": true,
-                "host": "ip1.nimbleway.com",
-                "port": "7000",
-                "username": "nimble_user",
-                "password": "nimble_pass"
-            }
-        }
-    ],
-    "settings": {
-        "max_concurrent_accounts": 5,
-        "max_concurrent_searches_per_account": 3,
-        "rate_limit_delay_min": 1.0,
-        "rate_limit_delay_max": 3.0
+      "account": "your_email@gmail.com",
+      "password": "your_password"
+    },
+    {
+      "account": "another_email@gmail.com", 
+      "password": "another_password"
     }
+  ]
 }
 ```
 
-### **URL Configuration** (`settings/facebook_group_urls.txt`)
-```
-https://www.facebook.com/groups/search/groups_home/?q=Dallas%2C+TX
-https://www.facebook.com/groups/search/groups_home/?q=Houston%2C+TX
-https://www.facebook.com/groups/search/groups_home/?q=Austin%2C+TX
-```
+**Account Setup Tips:**
+- Use real Facebook accounts (not fake/bot accounts)
+- Ensure accounts have been active for at least a few days
+- Avoid accounts that have been recently created
+- Make sure accounts don't have any restrictions or warnings
+- Consider using accounts from different IP addresses if possible
 
-### **Proxy Configuration** (`settings/nimble_settings.json`)
-```json
-{
-    "username": "your_nimble_username",
-    "password": "your_nimble_password",
-    "host": "ip.nimbleway.com",
-    "port": "7000"
-}
-```
+### 4. Generate Cookies for All Accounts
 
-## 🛠️ Tools
+Before running the scraper, you need to generate cookies for each account:
 
-### **Account Manager** (`scripts/manage_accounts.py`)
 ```bash
-python scripts/manage_accounts.py
+python scripts/generate_cookies.py
 ```
 
-**Features:**
-- Add/remove accounts
-- Update credentials
-- Create cookie templates
-- Bulk account import
-- Check account readiness
+**What this script does:**
+- Opens Chrome browser for each account
+- Navigates to Facebook login page
+- Automatically enters email and password
+- Clicks login button
+- Waits for login to complete
+- Extracts all cookies from the browser
+- Saves cookies to `settings/cookies/` directory
 
-### **URL Generator** (`scripts/generate_urls.py`)
+**Important Notes:**
+- The browser will open visibly (not headless) so you can see the login process
+- If an account has 2FA enabled, you'll need to manually complete the verification when the browser opens
+- If login fails, the script will continue with the next account
+- Cookies are saved as `{email}_cookies.json` files (email with @ and . replaced with _at_ and _)
+- The script waits 10 seconds between accounts to avoid triggering security measures
+
+**Troubleshooting Cookie Generation:**
+
+1. **Login Failed - Check Credentials**
+   ```
+   ❌ Login failed for email@gmail.com: The email address or mobile number you entered isn't connected to an account
+   ```
+   - Verify the email and password are correct
+   - Check if the account exists and is active
+   - Try logging in manually to Facebook first
+
+2. **2FA Required**
+   - When the browser opens, you'll see a 2FA prompt
+   - Enter your 2FA code manually
+   - The script will wait for you to complete the verification
+   - After successful 2FA, the script will continue automatically
+
+3. **Account Locked/Temporarily Blocked**
+   ```
+   ❌ Login failed for email@gmail.com: Your account has been temporarily locked
+   ```
+   - Wait a few hours before trying again
+   - Try logging in manually to Facebook first
+   - Consider using a different account
+
+4. **Chrome Driver Issues**
+   ```
+   ❌ Error: ChromeDriver not found
+   ```
+   - Install ChromeDriver: `pip install webdriver-manager`
+   - Or download manually from: https://chromedriver.chromium.org/
+   - Make sure Chrome browser is installed
+
+5. **Browser Opens But Doesn't Login**
+   - Check if Facebook's login page structure has changed
+   - Try running the script again
+   - Check your internet connection
+
+### 5. Test Your Cookies
+
+After generating cookies, test them to make sure they work:
+
 ```bash
-python scripts/generate_urls.py
+python scripts/test_cookies.py
 ```
 
-**Features:**
-- Generate URLs from search terms
-- Convert existing URLs to search terms
-- Generate sample URLs
-- View current URLs file
+This script will:
+- Load all generated cookie files
+- Test each account's cookies by making a request to Facebook
+- Verify that the cookies allow access to Facebook
+- Show you which accounts are working and which need attention
 
-## 📊 Performance
+**Expected Output:**
+```
+🧪 Facebook Cookie Tester
+==================================================
+📋 Found 8 accounts
 
-### **Single Account**
-- **~0.3 calls/second** with rate limiting
-- **Target: 1000 calls** (~1 hour)
-- **Memory efficient** - processes URLs line by line
+🔍 Testing cookies for: Lanekimmonogo@gmail.com
+✅ Cookies working for Lanekimmonogo@gmail.com
+   User ID: 123456789
 
-### **Multi-Account (5 accounts)**
-- **~5-8 calls/second** with parallel processing
-- **15 concurrent workers** (5 accounts × 3 searches)
-- **Estimated time: 3-5 days** for 34M calls
-- **15x faster** than single account
+🔍 Testing cookies for: Dextermonogo@gmail.com
+✅ Cookies working for Dextermonogo@gmail.com
+   User ID: 987654321
 
-### **Scalability**
-- **Add more accounts** for increased speed
-- **Configure proxy IPs** for better distribution
-- **Adjust concurrency** based on rate limits
-- **Monitor progress** with detailed logging
+==================================================
+🎯 Test Results:
+✅ Working cookies: 8
+❌ Failed cookies: 0
+📊 Success rate: 100.0%
+==================================================
 
-## 🔧 Advanced Configuration
+✅ You can now run the scraper:
+   python scripts/facebook_groups_scraper.py
+```
 
-### **Rate Limiting**
+### 6. Configure Search URLs (Optional)
+
+Create `settings/facebook_group_urls.txt` with your search URLs, one per line:
+
+```
+https://www.facebook.com/groups/search/groups_home/?q=arlington%20tx
+https://www.facebook.com/groups/search/groups_home/?q=dallas%20groups
+https://www.facebook.com/groups/search/groups_home/?q=houston%20business
+```
+
+**URL Format:**
+- Use Facebook's search URL format
+- Encode spaces as `%20` or `+`
+- One URL per line
+- The scraper will extract search terms from these URLs
+
+### 7. Run the Scraper
+
+```bash
+python scripts/facebook_groups_scraper.py
+```
+
+## How It Works
+
+### Account Rotation
+- The scraper starts with the first account
+- When rate limiting is detected, it automatically switches to the next account
+- After trying all accounts, it waits with exponential backoff
+- If all accounts are rate limited, it saves progress and stops
+
+### Cookie Management
+- Cookies are stored in `settings/cookies/` directory
+- Each account has its own cookie file: `{email}_cookies.json`
+- The scraper loads cookies for the current account automatically
+- If cookies are invalid or missing, it skips to the next account
+
+### Progress Tracking
+- Progress is saved in `output/url_progress.json`
+- State is saved in `output/groups_state.json`
+- You can stop and resume the scraper at any time
+- Groups are saved to `output/groups.jsonl`
+
+## File Structure
+
+```
+facebook/
+├── settings/
+│   ├── bought_accounts.json      # Your account credentials
+│   ├── cookies/                  # Generated cookies for each account
+│   │   ├── Lanekimmonogo_at_gmail_com_cookies.json
+│   │   ├── Dextermonogo_at_gmail_com_cookies.json
+│   │   └── ...
+│   ├── facebook_group_urls.txt   # Search URLs (optional)
+│   └── nimble_settings.json      # Proxy settings (optional)
+├── output/
+│   ├── groups.jsonl              # Scraped groups
+│   ├── groups_state.json         # Scraper state
+│   └── url_progress.json         # URL processing progress
+├── scripts/
+│   ├── facebook_groups_scraper.py    # Main scraper
+│   ├── generate_cookies.py           # Cookie generator
+│   └── test_cookies.py               # Cookie tester
+└── requirements.txt
+```
+
+## Troubleshooting
+
+### Cookie Generation Issues
+
+1. **Login Failed**: Check if the account credentials are correct
+2. **2FA Required**: Complete 2FA manually when the browser opens
+3. **Account Locked**: Some accounts may be temporarily locked - try again later
+4. **Chrome Driver Issues**: Update Chrome or ChromeDriver to latest version
+5. **Browser Not Opening**: Make sure Chrome is installed and accessible
+6. **Script Hangs**: Check your internet connection and Facebook's status
+
+### Scraper Issues
+
+1. **No Cookies Found**: Run `generate_cookies.py` first
+2. **All Accounts Rate Limited**: Wait a few hours before trying again
+3. **Invalid Cookies**: Re-generate cookies for the problematic account
+4. **Script Crashes**: Check the console output for error messages
+
+### Rate Limiting
+
+The scraper handles rate limiting by:
+- Detecting rate limit responses
+- Automatically switching to the next account
+- Using exponential backoff when all accounts are limited
+- Saving progress before stopping
+
+**Common Rate Limit Signs:**
+- HTTP 429 (Too Many Requests)
+- "Sorry, something went wrong" messages
+- "Please try again later" responses
+- Account checkpoint requirements
+
+## Configuration Options
+
+### Target Calls
+Change `TARGET_CALLS` in the scraper to set how many GraphQL calls to make:
+
 ```python
-# In multi_account_parallel_scraper.py
-RATE_LIMIT_DELAY = (1.0, 3.0)  # seconds between requests
-SEARCH_COOLDOWN = (10.0, 20.0)  # seconds between searches
+TARGET_CALLS = 1000  # Default: 1000 calls
 ```
 
-### **Concurrency Settings**
+### Sleep Between Requests
+Adjust the sleep time between requests:
+
 ```python
-MAX_CONCURRENT_ACCOUNTS = 5
-MAX_CONCURRENT_SEARCHES_PER_ACCOUNT = 3
-# Total workers = 5 × 3 = 15 concurrent searches
+SLEEP_BETWEEN_REQUESTS = (1.5, 4.0)  # Random range in seconds
 ```
 
-### **Search Terms**
-- **URL-based**: Load from `facebook_group_urls.txt`
-- **Fallback**: Hardcoded search terms
-- **Dynamic**: Extract from Facebook search URLs
-- **Flexible**: Support any location or search term
+### Rate Limiting Settings
+Modify rate limiting behavior:
 
-## 📈 Monitoring & Logging
-
-### **Progress Tracking**
-- **URL progress**: `output/url_progress.json`
-- **Account state**: `output/states/state_*.json`
-- **Detailed logs**: `output/multi_account_scraper.log`
-- **Summary reports**: `output/multi_account_scraper_summary.json`
-
-### **Log Levels**
-- **INFO**: Normal operation
-- **WARNING**: Rate limiting, parsing errors
-- **ERROR**: Request failures, account issues
-
-## 🛡️ Anti-Detection Features
-
-### **Account Diversity**
-- **Unique User-Agents** per account
-- **Different session parameters** per account
-- **Individual cookie management**
-- **Account rotation** with load balancing
-
-### **Request Patterns**
-- **Randomized delays** between requests
-- **Dynamic Referer headers** per search term
-- **Proper request sequencing**
-- **Session parameter updates**
-
-### **Proxy Management**
-- **Multiple IP addresses** via Nimbleway
-- **Proxy rotation** per account
-- **Fallback mechanisms** for proxy failures
-- **Load distribution** across IPs
-
-## 🚨 Troubleshooting
-
-### **Common Issues**
-
-#### **Rate Limiting**
-```
-Error: 1357004 - Sorry, something went wrong
-```
-**Solution:**
-- Increase delays between requests
-- Rotate accounts more frequently
-- Update session parameters
-- Check proxy configuration
-
-#### **Cookie Issues**
-```
-Error: Cookie file needs updating
-```
-**Solution:**
-- Update cookies with fresh session data
-- Check cookie format and values
-- Ensure all required cookies are present
-
-#### **Proxy Problems**
-```
-Error: Connection timeout
-```
-**Solution:**
-- Verify proxy credentials
-- Check proxy server status
-- Enable fallback to direct connection
-- Test proxy connectivity
-
-### **Debug Mode**
-```bash
-# Enable detailed logging
-export DEBUG=1
-python scripts/run_multi_account_scraper.py
+```python
+MAX_RATE_LIMIT_ATTEMPTS = 3  # How many attempts before stopping
+BASE_BACKOFF_TIME = 60        # Base wait time in seconds
 ```
 
-## 📝 Examples
+## Best Practices
 
-### **Generate Sample URLs**
-```bash
-python scripts/generate_urls.py
-# Choose option 2
-# Creates 150+ sample URLs for testing
-```
+### Account Management
+- **Use Real Accounts**: Avoid fake or bot accounts
+- **Age Matters**: Older accounts are less likely to be flagged
+- **Activity**: Accounts should have some legitimate activity
+- **Diversity**: Use accounts from different sources/IPs if possible
+- **Rotation**: Don't use the same account too frequently
 
-### **Add Multiple Accounts**
-```bash
-python scripts/manage_accounts.py
-# Choose option 7
-# Enter JSON array of accounts:
-[
-    {"email": "user1@example.com", "password": "pass1"},
-    {"email": "user2@example.com", "password": "pass2"}
-]
-```
+### Cookie Management
+- **Fresh Cookies**: Generate new cookies every few days
+- **Test Regularly**: Use `test_cookies.py` to verify cookies work
+- **Backup**: Keep backup copies of working cookies
+- **Cleanup**: Remove cookies for non-working accounts
 
-### **Custom Search Terms**
-```bash
-# Edit settings/facebook_group_urls.txt
-# Add your specific locations:
-https://www.facebook.com/groups/search/groups_home/?q=New+York%2C+NY
-https://www.facebook.com/groups/search/groups_home/?q=Los+Angeles%2C+CA
-https://www.facebook.com/groups/search/groups_home/?q=Chicago%2C+IL
-```
+### Scraping Strategy
+- **Start Small**: Begin with fewer calls to test the system
+- **Monitor**: Watch for rate limiting signs
+- **Pause**: Stop if all accounts get rate limited
+- **Resume**: The scraper can resume from where it left off
 
-## 🤝 Contributing
+## Security Notes
 
-1. **Fork the repository**
-2. **Create a feature branch**
-3. **Make your changes**
-4. **Test thoroughly**
-5. **Submit a pull request**
+- Keep your `bought_accounts.json` file secure
+- Don't commit cookies to version control
+- Use proxies if available to reduce detection
+- Consider using residential proxies for better success rates
+- Respect Facebook's Terms of Service
+- Don't overload Facebook's servers
 
-## 📄 License
+## Support
 
-This project is for educational purposes only. Please respect Facebook's Terms of Service and rate limits.
+If you encounter issues:
+1. Check the console output for error messages
+2. Verify all dependencies are installed
+3. Ensure Chrome/ChromeDriver are up to date
+4. Try regenerating cookies for problematic accounts
+5. Test cookies individually with `test_cookies.py`
+6. Check if Facebook's login page structure has changed
 
-## ⚠️ Disclaimer
+## Quick Start Checklist
 
-- **Use responsibly** and respect rate limits
-- **Don't overload** Facebook's servers
-- **Comply with** Facebook's Terms of Service
-- **Monitor** your account status regularly
-- **Backup** your data and progress frequently
-
----
-
-**Happy Scraping! 🚀** 
+- [ ] Install dependencies: `pip install -r requirements.txt`
+- [ ] Verify Chrome is installed
+- [ ] Check `settings/bought_accounts.json` has your accounts
+- [ ] Generate cookies: `python scripts/generate_cookies.py`
+- [ ] Test cookies: `python scripts/test_cookies.py`
+- [ ] Optional: Add search URLs to `settings/facebook_group_urls.txt`
+- [ ] Run scraper: `python scripts/facebook_groups_scraper.py` 

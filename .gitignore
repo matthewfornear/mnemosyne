@@ -2,6 +2,10 @@ output/
 settings/cookie.json
 settings/accounts.json
 settings/accounts/
+settings/cookies/
+settings/bought_accounts.json
+settings/active_accounts.json
+settings/nimbleway_settings.json
 settings/nimble_settings.json
 *.log
 __pycache__/

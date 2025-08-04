@@ -1,2 +1,4 @@
-requests
-zstandard 
+requests>=2.31.0
+zstandard>=0.21.0
+selenium>=4.15.0
+webdriver-manager>=4.0.0 

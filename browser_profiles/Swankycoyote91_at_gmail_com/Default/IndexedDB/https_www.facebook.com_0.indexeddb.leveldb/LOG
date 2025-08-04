@@ -1,0 +1,6 @@
+2025/08/02-09:36:05.605 1834 Creating DB C:\projects\facebook\browser_profiles\Swankycoyote91_at_gmail_com\Default\IndexedDB\https_www.facebook.com_0.indexeddb.leveldb since it was missing.
+2025/08/02-09:36:05.607 1834 Reusing MANIFEST C:\projects\facebook\browser_profiles\Swankycoyote91_at_gmail_com\Default\IndexedDB\https_www.facebook.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/08/02-09:36:06.428 36c0 Level-0 table #5: started
+2025/08/02-09:36:06.430 36c0 Level-0 table #5: 14971 bytes OK
+2025/08/02-09:36:06.431 36c0 Delete type=0 #3
+2025/08/02-09:36:06.431 1834 Manual compaction at level-0 from '\x00\x07\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x08\x00\x00\x00' @ 0 : 0; will stop at (end)
