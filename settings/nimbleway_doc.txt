@@ -1,0 +1,293 @@
+The BackConnect proxy gateway
+Nimble has a single proxy gateway that manages sessions for you, freeing you from proxy lists and dynamic IPs. Requests can be authenticated with user:password combinations or by listing your IPs in the allowlist.
+
+See our Backconnect Gateway documentation for all gateway request options.
+
+Sending a request with user:password authentication
+Server
+Proxy IP Port
+ip.nimbleway.com
+
+7000
+
+Request Example
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://account-accountName-pipeline-pipelineName:pipelinePassword@ip.nimbleway.com:7000'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+The following parameters are required:
+
+accountName – Your company gateway name.
+
+pipelineName – The pipeline you wish to use (every new account comes with a default pipeline named residential for a quick start).
+
+pipelinePassword – The pipeline’s password to authenticate your request.
+
+Target page – The URL you’d like to gather data from.
+
+Nimble IP Autentication
+Requests to the BackConnect Gateway can be authenticated using username and password authentication or through an authenticated IP.
+
+Username and password
+In its most simple form, a request with username/password authentication looks like this:
+
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://account-accountName-pipeline-pipelineName:pipelinePassword@ip.nimbleway.com:7000',
+    'https': 'https://account-accountName-pipeline-pipelineName:pipelinePassword@ip.nimbleway.com:7000'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+Replace accountName, pipelineName, and pipelinePassword with your account details before performing a request.
+
+Authenticated IPs
+Instead of sending username and password credentials with every request, trusted IPs can be authenticated by adding them to your account's allow list, and any request coming from those authenticated IPs does not need to include a username or password.
+
+It's important to be cautious with which IPs you authenticate. If a shared IP (such as an AWS shared IP) is added, it's possible your account will be used by other parties through the shared IP.
+
+Authenticated IPs overview
+Your account has a single, centralized list of authenticated IP addresses. When sending a request from an authenticated IP, since there is no longer a username portion through which additional parameters (such as geotargeting or session control) can be controlled, all parameters are defined in and inherited from the request's target pipeline, which is set using a custom port. For example:
+
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://ip.nimbleway.com:9400',
+    'https': 'https://ip.nimbleway.com:9400'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+In the above example, the request is written without a username or password, but targets port 9400 instead of 7000. Assuming the request is sent from an authenticated IP, port 9400 would be used to identify which pipeline the request should run through, and the request would inherit geotargeting and session control parameters from the target pipeline's configuration.
+
+Each pipeline can allow or disallow authenticated IPs to connect to it. You can create a new pipeline, or modify an existing pipeline, in order to enable authenticated IP connection, define the port range that is used to target that particular pipeline, and manage your authenticated IPs.
+
+Managing Pipelines
+Pipelines can be managed in one of two ways:
+
+
+Using the pipeline creation wizard in the Nimble User Dashboard
+
+
+Using the /account/pipelines endpoint of the Admin API.
+
+Previous
+Send a request
+Next
+Geotargeting and session control
+
+Geotargeting and session control
+Adding targeting parameters
+Connecting to Nimble IP with user:password authentication allows you to control session targeting and behavior by modifying the user portion of the request.
+
+Selecting your target geolocation
+To request an IP from a specific country, add country-<country_code> to the user portion:
+
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://account-accountName-pipeline-pipelineName-country-countryCode:pipelinePassword@ip.nimbleway.com:7000',
+    'https': 'https://account-accountName-pipeline-pipelineName-country-countryCode:pipelinePassword@ip.nimbleway.com:7000'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+We use ISO 3166 alpha-2 Country Codes (use ALL to randomly select a country).
+
+If you’d like to get even more specific, you can also add state-<state_code>  or city-<city_code> to target a US state or a City. For more details see Country/state/city geotargeting
+
+If no peers are available in a supported country/state/city, Nimble IP will return a 525 response. For more information, see Nimble IP's Response Codes.
+
+Using sticky IPs
+A sticky IP allows you to make multiple requests through the same IP address. This is done by initiating a session, which associates your request with the sticky IP address.
+
+To create a session, add session-<random_string> to the user portion.
+
+Session IDs are limited to 32 alphanumeric characters (no minimum). Session IDs cannot include hyphens "-" as this will act as a separator and end the "username" portion of the connection string.
+
+For example:
+
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://account-accountName-pipeline-pipelineName-session-randomString:pipelinePassword@ip.nimbleway.com:7000',
+    'https': 'https://account-accountName-pipeline-pipelineName-session-randomString:pipelinePassword@ip.nimbleway.com:7000'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+Geo-sessions: Precise location-based sessions
+Nimble Geo-sessions are a next-gen session solution that provides a variety of upgrades, including:
+
+
+Consistent Proxies: Geo-sessions select for the most stable proxies in our pool, reducing rotation during the session substantially.
+
+
+Persistent Geolocation: Any rotated IP during the session is selected from a limited geographic zone of up to only 15km.
+
+
+ASN Consistency: IPs selected within a Geo-session will retain the same ASN throughout the session.
+
+Geo-sessions are incredibly easy to use; simply pass the parameter geosession along with a random string of your choosing that will serve as the Geo-session ID.
+
+Geosession IDs are limited to between 16 to 32 alphanumeric characters (16 characters minimum).
+
+For example:
+
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://account-accountName-pipeline-pipelineName-geosession-randomGeoSessionString:pipelinePassword@ip.nimbleway.com:7000',
+    'https': 'https://account-accountName-pipeline-pipelineName-geosession-randomGeoSessionString:pipelinePassword@ip.nimbleway.com:7000'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+Be sure to use the same parameters across requests that share the same Geo-session. If the location targeting is changed, but the Geo-session ID remains the same, a new session will still be initiated.
+
+Geo-sessions are currently only supported within the US. Support for additional countries is coming soon.
+
+Learn more about how Geo-sessions work and how to use them.
+
+Combining parameters
+All of the parameters we’ve covered before can be used together in a single request. This is done by chaining them together, like in this example:
+
+cURL
+Python
+Node.js
+Go
+Copy
+import requests
+
+proxies = {
+    'http': 'http://account-MyCompany-pipeline-residential-country-US-state-NY-session-sess1:Password123@ip.nimbleway.com:7000',
+    'https': 'https://account-MyCompany-pipeline-residential-country-US-state-NY-session-sess1:Password123@ip.nimbleway.com:7000'
+}
+
+url = 'https://ipinfo.io'
+
+response = requests.get(url, proxies=proxies)
+
+print(response.status_code)
+print(response.text)
+Previous
+Nimble IP Autentication
+Next
+
+Response codes
+Code Number
+Description
+200
+
+OK!
+
+302
+
+Redirect
+
+400
+
+Badly formatted request. Make sure your request includes the correct account, pipeline, password and target URL.
+
+401
+
+Unauthorized request. The site server failed authentication, make sure you provide the correct credentials for your target site.
+
+402
+
+Request denied - trial quota or credits were exhausted. Contact your account executive to increase your Nimble IP quota or add credits.
+
+403
+
+The requested Pipeline is disabled or the requested site is on our list of forbidden sites. Contact your account manager for more details.
+
+404
+
+Resource not found. Verify you are using the correct URL in your request.
+
+407
+
+Proxy Authentication Required. Request failed proxy authentication, check your account, pipeline name and password before retrying the request.
+
+500
+
+Internal Proxy Server Error.
+
+502
+
+Bad Gateway. Invalid response from the site server.
+
+503
+
+Service Unavailable. Returned when there is an unexpected overload preventing the proxy from responding.
+
+504
+
+Gateway Timeout. The proxy server did not receive a response from the site server and reached the timeout limit.
+
+522
+
+Connect timeout. Your connection to the Proxy timed out during the CONNECT phase.
+
+525
+
+No IP Found. The proxy was unable to match a suitable IP for the request.
