@@ -11,3 +11,4 @@ settings/nimble_settings.json
 __pycache__/
 *.pyc
 .DS_Store 
+backup/
