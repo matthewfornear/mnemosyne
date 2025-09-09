@@ -13,3 +13,4 @@ __pycache__/
 *.pyc
 .DS_Store 
 backup/
+*unsearched_terms_urls.txt

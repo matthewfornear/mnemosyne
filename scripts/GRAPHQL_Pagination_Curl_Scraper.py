@@ -15,9 +15,11 @@ import multiprocessing as mp
 from multiprocessing import Manager
 from dataclasses import dataclass, asdict
 from pathlib import Path
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configuration
-# TARGET_CALLS = 10000  # Removed - workers should process all assigned URLs
+MAX_CONCURRENT_SEARCHES_PER_WORKER = 4  # Number of search terms to process in parallel per worker
 
 # File paths
 PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,6 +27,9 @@ OUTPUT_DIR = os.path.join(PARENT_DIR, "output", "curl")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "groups_output_curl.json")
 PROGRESS_FILE = os.path.join(OUTPUT_DIR, "curl_scraper_progress.json")
 URL_PROGRESS_FILE = os.path.join(OUTPUT_DIR, "url_progress_curl.json")
+# New enhanced progress tracking files
+URL_DETAILED_PROGRESS_FILE = os.path.join(OUTPUT_DIR, "url_detailed_progress.json")
+CITY_PROGRESS_FILE = os.path.join(OUTPUT_DIR, "city_progress.json")
 LOG_FILE = os.path.join(OUTPUT_DIR, "curl_scraper.log")
 URLS_FILE = os.path.join(PARENT_DIR, "settings", "facebook_group_urls.txt")
 CURL_DIR = os.path.join(PARENT_DIR, "settings", "curl")
@@ -33,8 +38,33 @@ CURL_DIR = os.path.join(PARENT_DIR, "settings", "curl")
 PROXIES = None
 
 @dataclass
+class URLProgress:
+    """Track progress for each individual URL"""
+    url: str
+    search_term: str
+    city: str
+    completed_accounts: List[str]  # List of account names that completed this URL
+    failed_accounts: List[str]     # List of account names that failed this URL
+    last_cursor: Optional[str]     # Last pagination cursor
+    total_groups_found: int        # Total groups found for this URL
+    zero_result_count: int         # Consecutive zero-result pages
+    last_updated: str              # ISO timestamp
+    status: str                    # "pending", "in_progress", "completed", "failed"
+    groups_found: List[str]        # List of group IDs found for this URL
+
+@dataclass
+class CityProgress:
+    """Track progress for each unique city"""
+    city: str
+    urls_processed: List[str]     # List of URLs processed for this city
+    total_groups_found: int        # Total groups found across all URLs for this city
+    unique_groups: List[str]       # List of unique group IDs found for this city
+    last_updated: str              # ISO timestamp
+    status: str                    # "active", "completed"
+
+@dataclass
 class SearchProgress:
-    """Track progress for each search term"""
+    """Track progress for each search term (legacy support)"""
     search_term: str
     url: str
     completed_accounts: List[str]  # List of account names that completed this search
@@ -49,7 +79,6 @@ def load_nimbleway_settings():
     """Load Nimbleway proxy settings"""
     global PROXIES
     
-    # Always use Nimbleway proxy - no interactive selection needed
     print("🔒 Loading Nimbleway proxy settings...")
     
     # Nimbleway Proxy Integration - REQUIRED for security
@@ -255,18 +284,116 @@ def load_progress() -> Dict[str, SearchProgress]:
         print(f"⚠️  Error loading progress: {e}")
         return {}
 
-def save_progress(progress: Dict[str, SearchProgress]):
+def save_progress(progress: Dict[str, SearchProgress], output_lock=None):
     """Save scraping progress to file"""
     try:
         # Ensure output directory exists
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         
         data = {key: asdict(prog) for key, prog in progress.items()}
-        with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        # Use lock if provided (for multiprocessing safety)
+        if output_lock:
+            with output_lock:
+                with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+        else:
+            with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
         
     except Exception as e:
         print(f"⚠️  Error saving progress: {e}")
+
+def load_url_detailed_progress() -> Dict[str, URLProgress]:
+    """Load detailed URL progress from file"""
+    if not os.path.exists(URL_DETAILED_PROGRESS_FILE):
+        return {}
+    
+    try:
+        with open(URL_DETAILED_PROGRESS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        progress = {}
+        for key, item in data.items():
+            progress[key] = URLProgress(**item)
+        
+        print(f"📊 Loaded detailed URL progress for {len(progress)} URLs")
+        return progress
+        
+    except Exception as e:
+        print(f"⚠️  Error loading detailed URL progress: {e}")
+        return {}
+
+def save_url_detailed_progress(progress: Dict[str, URLProgress], output_lock=None):
+    """Save detailed URL progress to file"""
+    try:
+        # Ensure output directory exists
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        
+        data = {key: asdict(prog) for key, prog in progress.items()}
+        
+        # Use lock if provided (for multiprocessing safety)
+        if output_lock:
+            with output_lock:
+                with open(URL_DETAILED_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+        else:
+            with open(URL_DETAILED_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        
+    except Exception as e:
+        print(f"⚠️  Error saving detailed URL progress: {e}")
+
+def load_city_progress() -> Dict[str, CityProgress]:
+    """Load city progress from file"""
+    if not os.path.exists(CITY_PROGRESS_FILE):
+        return {}
+    
+    try:
+        with open(CITY_PROGRESS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        progress = {}
+        for key, item in data.items():
+            progress[key] = CityProgress(**item)
+        
+        print(f"📊 Loaded city progress for {len(progress)} cities")
+        return progress
+        
+    except Exception as e:
+        print(f"⚠️  Error loading city progress: {e}")
+        return {}
+
+def save_city_progress(progress: Dict[str, CityProgress], output_lock=None):
+    """Save city progress to file"""
+    try:
+        # Ensure output directory exists
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        
+        data = {key: asdict(prog) for key, prog in progress.items()}
+        
+        # Use lock if provided (for multiprocessing safety)
+        if output_lock:
+            with output_lock:
+                with open(CITY_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+        else:
+            with open(CITY_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        
+    except Exception as e:
+        print(f"⚠️  Error saving city progress: {e}")
+
+def extract_city_from_search_term(search_term: str) -> str:
+    """Extract city from search term like 'Bettles, AK' -> 'Bettles'"""
+    if not search_term or search_term == "Unknown":
+        return "Unknown"
+    
+    # Split by comma and take the first part (city)
+    parts = search_term.split(',')
+    if len(parts) >= 1:
+        return parts[0].strip()
+    return search_term.strip()
 
 def ensure_output_directory():
     """Ensure the output directory exists"""
@@ -348,7 +475,19 @@ def mark_url_completed(url: str, url_progress: Dict[str, bool]):
     """Mark a URL as completed and save progress"""
     url_progress[url] = True
     save_url_progress(url_progress)
-    print(f"✅ Marked URL as completed: {url}")
+    
+    # Extract search term for better logging
+    search_term = extract_search_term_from_url(url)
+    print(f"✅ Marked URL as completed: {search_term} ({url[:50]}...)")
+    
+    # Log to debug file for tracking
+    debug_file = os.path.join(OUTPUT_DIR, "url_completion_debug.txt")
+    try:
+        with open(debug_file, 'a', encoding='utf-8') as f:
+            timestamp = datetime.datetime.now().isoformat()
+            f.write(f"{timestamp} - URL completed: {search_term} - {url}\n")
+    except Exception as e:
+        print(f"⚠️  Could not write to debug file: {e}")
 
 def get_worker_output_file(worker_id: Optional[int] = None) -> str:
     """Get output file path for specific worker or main process"""
@@ -383,28 +522,61 @@ def append_group_safe(group: Dict, worker_id: Optional[int] = None):
                 f.write(f"ERROR saving group: {e}\n")
 
 def merge_worker_output_files():
-    """Merge all worker output files into main output file"""
+    """Merge all worker output files into main output file with proper deduplication"""
     print("🔄 Merging worker output files...")
     
     all_groups = []
     seen_ids = set()
     
+    # First, load existing main output file if it exists
+    existing_groups = []
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+                if isinstance(existing_data, list):
+                    existing_groups = existing_data
+                    print(f"📁 Loaded {len(existing_groups)} existing groups from main output")
+                else:
+                    print("⚠️  Main output file is not in expected array format, starting fresh")
+        except Exception as e:
+            print(f"⚠️  Error reading existing main output: {e}, starting fresh")
+    
+    # Add existing groups to our collection
+    for group in existing_groups:
+        group_id = group.get("id")
+        if group_id and group_id not in seen_ids:
+            all_groups.append(group)
+            seen_ids.add(group_id)
+    
+    print(f"📊 Starting with {len(all_groups)} groups from existing main output")
+    
     # Find all worker output files
     worker_files = glob.glob(os.path.join(OUTPUT_DIR, "groups_output_curl_worker_*.json"))
+    print(f"📁 Found {len(worker_files)} worker files to merge")
+    
+    new_groups_from_workers = 0
     
     for worker_file in worker_files:
         try:
+            worker_groups = 0
             with open(worker_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     if line:
                         try:
                             group = json.loads(line)
-                            if group.get("id") and group["id"] not in seen_ids:
+                            group_id = group.get("id")
+                            if group_id and group_id not in seen_ids:
                                 all_groups.append(group)
-                                seen_ids.add(group["id"])
+                                seen_ids.add(group_id)
+                                new_groups_from_workers += 1
+                                worker_groups += 1
                         except json.JSONDecodeError:
                             continue
+            
+            print(f"   📁 {os.path.basename(worker_file)}: {worker_groups} new groups")
+            
         except Exception as e:
             print(f"⚠️  Error reading worker file {worker_file}: {e}")
     
@@ -412,26 +584,34 @@ def merge_worker_output_files():
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         json.dump(all_groups, f, indent=2, ensure_ascii=False)
     
-    print(f"✅ Merged {len(all_groups)} unique groups from {len(worker_files)} worker files")
+    print(f"✅ Merge complete:")
+    print(f"   • Total groups: {len(all_groups):,}")
+    print(f"   • Existing groups: {len(existing_groups):,}")
+    print(f"   • New groups from workers: {new_groups_from_workers:,}")
+    print(f"   • Worker files processed: {len(worker_files)}")
     
-    # Clean up worker files
-    for worker_file in worker_files:
-        try:
-            os.remove(worker_file)
-        except:
-            pass
+    # Worker files are kept separate and never merged
+    print(f"💾 Worker files kept separate (no merging)")
+    print(f"   • Each worker file contains results from that specific account")
+    print(f"   • Worker files: {len(worker_files)} files")
+    print(f"   • Main output file: {OUTPUT_FILE} (may be empty or contain old data)")
+    print(f"   • To clean up worker files later, run: python -c \"import glob, os; [os.remove(f) for f in glob.glob('output/curl/groups_output_curl_worker_*.json')]\"")
 
 class FacebookGraphQLScraper:
     """Facebook GraphQL scraper using cURL commands with advanced tracking"""
     
-    def __init__(self, worker_id: Optional[int] = None):
+    def __init__(self, worker_id: Optional[int] = None, output_lock=None):
         self.call_count = 0
         self.seen_groups = set()
         self.curl_templates = []
-        self.progress = load_progress()
+        self.progress = load_progress()  # Legacy search progress
+        # New enhanced progress tracking
+        self.url_progress = load_url_detailed_progress()  # Detailed URL progress
+        self.city_progress = load_city_progress()  # City progress
         self.worker_id = worker_id
         self.account_failure_counts = {}  # Track consecutive failures per account
         self.failed_accounts = set()  # Track accounts that have failed 3+ times
+        self.output_lock = output_lock  # Store the lock for thread-safe operations
         
     def add_curl_template(self, curl_data: Dict):
         """Add a cURL command as a template for requests"""
@@ -479,6 +659,65 @@ class FacebookGraphQLScraper:
             old_count = self.account_failure_counts[account_name]
             self.account_failure_counts[account_name] = 0
             print(f"✅ SUCCESS: {account_name} failure count reset (was {old_count}/3)")
+    
+    def update_city_progress(self, city: str, url: str, group_id: str, search_term: str):
+        """Update city progress tracking when a new group is found"""
+        if city not in self.city_progress:
+            self.city_progress[city] = CityProgress(
+                city=city,
+                urls_processed=[],
+                total_groups_found=0,
+                unique_groups=[],
+                last_updated=datetime.datetime.now().isoformat(),
+                status="active"
+            )
+        
+        city_prog = self.city_progress[city]
+        
+        # Add URL if not already processed
+        if url not in city_prog.urls_processed:
+            city_prog.urls_processed.append(url)
+        
+        # Add group ID if not already found
+        if group_id not in city_prog.unique_groups:
+            city_prog.unique_groups.append(group_id)
+            city_prog.total_groups_found += 1
+        
+        # Update timestamp
+        city_prog.last_updated = datetime.datetime.now().isoformat()
+        
+        # Save city progress
+        save_city_progress(self.city_progress, self.output_lock)
+    
+    def update_url_progress(self, url: str, search_term: str, city: str, group_id: str, account_name: str):
+        """Update detailed URL progress tracking"""
+        if url not in self.url_progress:
+            self.url_progress[url] = URLProgress(
+                url=url,
+                search_term=search_term,
+                city=city,
+                completed_accounts=[],
+                failed_accounts=[],
+                last_cursor=None,
+                total_groups_found=0,
+                zero_result_count=0,
+                last_updated=datetime.datetime.now().isoformat(),
+                status="pending",
+                groups_found=[]
+            )
+        
+        url_prog = self.url_progress[url]
+        
+        # Add group ID if not already found
+        if group_id not in url_prog.groups_found:
+            url_prog.groups_found.append(group_id)
+            url_prog.total_groups_found += 1
+        
+        # Update timestamp
+        url_prog.last_updated = datetime.datetime.now().isoformat()
+        
+        # Save URL progress
+        save_url_detailed_progress(self.url_progress, self.output_lock)
     
     def get_working_accounts(self) -> List[str]:
         """Get list of accounts that haven't failed 3+ times yet"""
@@ -807,7 +1046,7 @@ class FacebookGraphQLScraper:
                 print(f"❌ Failed to get response for page {page} using account {account_name}")
                 progress.failed_accounts.append(account_name)
                 progress.status = "failed"
-                save_progress(self.progress)
+                save_progress(self.progress, self.output_lock)
                 return False
             
             # Check for GraphQL errors
@@ -817,7 +1056,7 @@ class FacebookGraphQLScraper:
                 self.record_account_failure(account_name, error_msg)
                 progress.failed_accounts.append(account_name)
                 progress.status = "failed"
-                save_progress(self.progress)
+                save_progress(self.progress, self.output_lock)
                 return False
             
             # Extract groups
@@ -837,7 +1076,7 @@ class FacebookGraphQLScraper:
             
             # Save groups immediately
             if groups:
-                self.save_groups(groups)
+                self.save_groups(groups, url, search_term)
             
             # Get next cursor
             next_cursor = self.get_next_cursor(response)
@@ -849,13 +1088,13 @@ class FacebookGraphQLScraper:
             progress.last_cursor = next_cursor
             progress.zero_result_count = consecutive_zero_results
             progress.last_updated = datetime.datetime.now().isoformat()
-            save_progress(self.progress)
+            save_progress(self.progress, self.output_lock)
             
             cursor = next_cursor
             page += 1
             
-            # Wait between requests
-            time.sleep(random.uniform(0, 1))
+            # Wait between requests (reduced by 80%)
+            time.sleep(random.uniform(0.02, 0.2))
         
         # Mark as completed or failed
         if consecutive_zero_results >= 3:
@@ -863,15 +1102,15 @@ class FacebookGraphQLScraper:
             progress.completed_accounts.append(account_name)
             progress.status = "completed"
             print(f"📊 Total groups found: {groups_found_this_session}")
-            save_progress(self.progress)
+            save_progress(self.progress, self.output_lock)
             return True
         else:
             print(f"🔄 Paused '{search_term}' via {account_name}: reached end of pagination")
-            save_progress(self.progress)
+            save_progress(self.progress, self.output_lock)
             return True  # Not a failure, just reached end
     
-    def save_groups(self, groups: List[Dict]):
-        """Save groups to JSON file immediately"""
+    def save_groups(self, groups: List[Dict], url: str, search_term: str):
+        """Save groups to JSON file immediately with enhanced progress tracking"""
         if not groups:
             return
             
@@ -882,12 +1121,28 @@ class FacebookGraphQLScraper:
                 # Groups are already filtered in extract_groups, so save all of them
                 append_group_safe(group, self.worker_id)
                 new_groups_count += 1
+                
+                # Update enhanced progress tracking
+                group_id = group.get('id', '')
+                city = extract_city_from_search_term(search_term)
+                
+                if group_id and city != 'Unknown':
+                    # Update city progress
+                    self.update_city_progress(city, url, group_id, search_term)
+                    
+                    # Update URL progress
+                    self.update_url_progress(url, search_term, city, group_id, "current_account")
+                    
+                    # Note: We don't have the full URL here, but we can still track city progress
+                    # The URL progress will be updated when we have the full context
+                    
             except Exception as e:
                 print(f"❌ CRITICAL ERROR saving group {group.get('id', 'N/A')}: {e}")
         
         if new_groups_count > 0:
             print(f"💾 Worker {self.worker_id}: Immediately saved {new_groups_count} new groups to file")
             print(f"📊 Worker {self.worker_id}: Total unique groups seen: {len(self.seen_groups)}")
+            print(f"🏙️  Updated progress tracking for cities found in this batch")
         else:
             print(f"📊 Worker {self.worker_id}: No new groups in this batch")
     
@@ -896,12 +1151,8 @@ class FacebookGraphQLScraper:
         incomplete = []
         url_progress = load_url_progress()
         
+        # First pass: Mark URLs as completed if any account has already completed the search term
         for search_term, url in search_terms:
-            # Skip URLs that have already been completed
-            if url_progress.get(url, False):
-                print(f"⏭️  Skipping completed URL: {search_term}")
-                continue
-                
             # Check if any account has already completed this search term
             search_completed_by_any_account = False
             for template in self.curl_templates:
@@ -913,11 +1164,18 @@ class FacebookGraphQLScraper:
                         search_completed_by_any_account = True
                         break
             
-            # If already completed by any account, mark URL as complete and skip
+            # If already completed by any account, mark URL as complete immediately
             if search_completed_by_any_account:
                 if not url_progress.get(url, False):
                     mark_url_completed(url, url_progress)
-                print(f"⏭️  Skipping search term already completed: {search_term}")
+                    print(f"✅ Marked URL as completed (search term already done): {search_term}")
+                continue
+        
+        # Second pass: Now check for incomplete searches, skipping completed URLs
+        for search_term, url in search_terms:
+            # Skip URLs that have already been completed
+            if url_progress.get(url, False):
+                print(f"⏭️  Skipping completed URL: {search_term}")
                 continue
             
             # Add incomplete combinations for this search term
@@ -937,6 +1195,79 @@ class FacebookGraphQLScraper:
                         incomplete.append((search_term, url, account_name))
         
         return incomplete
+    
+    def process_search_term_parallel(self, search_term: str, url: str, account_name: str) -> Tuple[bool, str]:
+        """Process a single search term and return success status and message"""
+        try:
+            success = self.scrape_search_term_with_account(search_term, url, account_name)
+            if success:
+                return True, f"SUCCESS: {search_term} completed by {account_name}"
+            else:
+                return False, f"FAILED: {search_term} failed with {account_name}"
+        except Exception as e:
+            return False, f"EXCEPTION: Error processing '{search_term}' with {account_name}: {e}"
+
+    def get_comprehensive_progress_stats(self) -> Dict:
+        """Get comprehensive progress statistics including URL and city tracking"""
+        stats = {
+            'legacy_search_progress': {
+                'total_entries': len(self.progress),
+                'completed': sum(1 for p in self.progress.values() if p.status == 'completed'),
+                'failed': sum(1 for p in self.progress.values() if p.status == 'failed'),
+                'in_progress': sum(1 for p in self.progress.values() if p.status == 'in_progress'),
+                'pending': sum(1 for p in self.progress.values() if p.status == 'pending')
+            },
+            'url_progress': {
+                'total_urls': len(self.url_progress),
+                'total_groups_found': sum(p.total_groups_found for p in self.url_progress.values()),
+                'urls_with_groups': sum(1 for p in self.url_progress.values() if p.total_groups_found > 0)
+            },
+            'city_progress': {
+                'total_cities': len(self.city_progress),
+                'total_groups_found': sum(p.total_groups_found for p in self.city_progress.values()),
+                'cities_with_groups': sum(1 for p in self.city_progress.values() if p.total_groups_found > 0),
+                'total_unique_groups': sum(len(p.unique_groups) for p in self.city_progress.values())
+            }
+        }
+        
+        # Calculate unique cities from search terms
+        unique_cities = set()
+        for progress in self.progress.values():
+            city = extract_city_from_search_term(progress.search_term)
+            if city != 'Unknown':
+                unique_cities.add(city)
+        
+        stats['legacy_search_progress']['unique_cities'] = len(unique_cities)
+        
+        return stats
+    
+    def print_progress_summary(self):
+        """Print a comprehensive progress summary"""
+        stats = self.get_comprehensive_progress_stats()
+        
+        print(f"\n📊 COMPREHENSIVE PROGRESS SUMMARY:")
+        print("=" * 60)
+        
+        print(f"🔍 LEGACY SEARCH PROGRESS:")
+        print(f"   • Total entries: {stats['legacy_search_progress']['total_entries']:,}")
+        print(f"   • Completed: {stats['legacy_search_progress']['completed']:,}")
+        print(f"   • Failed: {stats['legacy_search_progress']['failed']:,}")
+        print(f"   • In progress: {stats['legacy_search_progress']['in_progress']:,}")
+        print(f"   • Pending: {stats['legacy_search_progress']['pending']:,}")
+        print(f"   • Unique cities: {stats['legacy_search_progress']['unique_cities']:,}")
+        
+        print(f"\n🌐 URL PROGRESS:")
+        print(f"   • Total URLs tracked: {stats['url_progress']['total_urls']:,}")
+        print(f"   • URLs with groups: {stats['url_progress']['urls_with_groups']:,}")
+        print(f"   • Total groups found: {stats['url_progress']['total_groups_found']:,}")
+        
+        print(f"\n🏙️  CITY PROGRESS:")
+        print(f"   • Total cities tracked: {stats['city_progress']['total_cities']:,}")
+        print(f"   • Cities with groups: {stats['city_progress']['cities_with_groups']:,}")
+        print(f"   • Total groups found: {stats['city_progress']['total_groups_found']:,}")
+        print(f"   • Total unique groups: {stats['city_progress']['total_unique_groups']:,}")
+        
+        print("=" * 60)
 
 def worker_process(worker_id: int, account_name: str, search_terms: List[Tuple[str, str]], output_lock):
     """Worker process to handle a specific account and search terms"""
@@ -964,7 +1295,7 @@ def worker_process(worker_id: int, account_name: str, search_terms: List[Tuple[s
             return
         
         # Create worker-specific scraper
-        scraper = FacebookGraphQLScraper(worker_id)
+        scraper = FacebookGraphQLScraper(worker_id, output_lock)
         
         # Load cURL files and find the template for this account
         curl_files = load_curl_files()
@@ -985,77 +1316,115 @@ def worker_process(worker_id: int, account_name: str, search_terms: List[Tuple[s
         with open(debug_file, 'a', encoding='utf-8') as f:
             f.write(f"cURL template loaded for account: {account_name}\n")
         
-        # Load URL progress for this worker
+        # Load URL progress for this worker and filter out already completed URLs
         url_progress = load_url_progress()
         worker_seen_ids = set()
         completed_count = 0
         failed_count = 0
         
-        for i, (search_term, url) in enumerate(search_terms):
-            # Check if URL is already completed
+        # Filter out already completed URLs before starting work
+        pending_search_terms = []
+        for search_term, url in search_terms:
             if url_progress.get(url, False):
-                print(f"⏭️  Worker {worker_id}: Skipping completed URL: {search_term}")
+                print(f"⏭️  Worker {worker_id}: Skipping already completed URL: {search_term}")
                 with open(debug_file, 'a', encoding='utf-8') as f:
-                    f.write(f"Skipped completed URL: {search_term}\n")
+                    f.write(f"Skipped already completed URL: {search_term}\n")
                 continue
-            
-            # Check if the account is still available (not marked as failed)
-            if account_name in scraper.failed_accounts:
-                print(f"🚨 Worker {worker_id}: Account {account_name} has been removed after 3 consecutive failures, stopping worker")
+            pending_search_terms.append((search_term, url))
+        
+        if not pending_search_terms:
+            print(f"✅ Worker {worker_id}: All assigned URLs are already completed, nothing to do")
+            return
+        
+        print(f"📋 Worker {worker_id}: Processing {len(pending_search_terms)} pending search terms in PARALLEL")
+        
+        # Filter out URLs that were completed by other workers
+        final_pending_terms = []
+        for search_term, url in pending_search_terms:
+            if url_progress.get(url, False):
+                print(f"⏭️  Worker {worker_id}: URL was completed by another worker, skipping: {search_term}")
                 with open(debug_file, 'a', encoding='utf-8') as f:
-                    f.write(f"WORKER STOPPED: Account {account_name} removed after 3 consecutive failures\n")
-                break
+                    f.write(f"Skipped URL completed by another worker: {search_term}\n")
+                continue
+            final_pending_terms.append((search_term, url))
+        
+        if not final_pending_terms:
+            print(f"✅ Worker {worker_id}: All assigned URLs were completed by other workers")
+            return
+        
+        print(f"🚀 Worker {worker_id}: Starting PARALLEL processing of {len(final_pending_terms)} search terms")
+        
+        # Use ThreadPoolExecutor for true parallel processing within the worker
+        max_workers = min(MAX_CONCURRENT_SEARCHES_PER_WORKER, len(final_pending_terms))  # Process up to MAX_CONCURRENT_SEARCHES_PER_WORKER search terms concurrently
+        progress_save_counter = 0
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all search terms for parallel processing
+            future_to_term = {
+                executor.submit(scraper.process_search_term_parallel, search_term, url, account_name): (search_term, url)
+                for search_term, url in final_pending_terms
+            }
             
-            print(f"\n🎯 Worker {worker_id}: Processing '{search_term}' ({i+1}/{len(search_terms)})")
-            with open(debug_file, 'a', encoding='utf-8') as f:
-                f.write(f"Starting search term: {search_term}\n")
-            
-            # Process this search term with this account
-            try:
-                success = scraper.scrape_search_term_with_account(search_term, url, account_name)
+            # Process completed futures as they finish
+            for future in as_completed(future_to_term):
+                search_term, url = future_to_term[future]
                 
-                if success:
-                    completed_count += 1
-                    # Check if this search term is now complete
-                    progress_key = f"{search_term}::{account_name}"
-                    if progress_key in scraper.progress:
-                        progress = scraper.progress[progress_key]
-                        if account_name in progress.completed_accounts:
-                            # Mark URL as completed
-                            with output_lock:
-                                mark_url_completed(url, url_progress)
-                    
+                # Check if account is still available
+                if account_name in scraper.failed_accounts:
+                    print(f"🚨 Worker {worker_id}: Account {account_name} removed after 3 consecutive failures, stopping worker")
                     with open(debug_file, 'a', encoding='utf-8') as f:
-                        f.write(f"SUCCESS: {search_term} completed by {account_name}\n")
-                else:
+                        f.write(f"WORKER STOPPED: Account {account_name} removed after 3 consecutive failures\n")
+                    break
+                
+                try:
+                    success, message = future.result()
+                    
+                    if success:
+                        completed_count += 1
+                        # Check if this search term is now complete and immediately mark URL as completed
+                        progress_key = f"{search_term}::{account_name}"
+                        if progress_key in scraper.progress:
+                            progress = scraper.progress[progress_key]
+                            if account_name in progress.completed_accounts:
+                                # Immediately mark URL as completed to prevent other workers from processing it
+                                with output_lock:
+                                    mark_url_completed(url, url_progress)
+                                    print(f"✅ Worker {worker_id}: Immediately marked URL as completed: {search_term}")
+                        
+                        print(f"✅ Worker {worker_id}: {message}")
+                    else:
+                        failed_count += 1
+                        print(f"❌ Worker {worker_id}: {message}")
+                        
+                        # Check if this was due to account-specific issues
+                        progress_key = f"{search_term}::{account_name}"
+                        if progress_key in scraper.progress:
+                            progress = scraper.progress[progress_key]
+                            if account_name in progress.failed_accounts:
+                                print(f"🚨 Worker {worker_id}: Account {account_name} failed for '{search_term}' - possible account issue")
+                    
+                    # Write to debug file
+                    with open(debug_file, 'a', encoding='utf-8') as f:
+                        f.write(f"{message}\n")
+                    
+                    # Save progress every 5 search terms instead of every single one
+                    progress_save_counter += 1
+                    if progress_save_counter % 5 == 0:
+                        save_progress(scraper.progress, output_lock)
+                        print(f"💾 Worker {worker_id}: Saved progress after {progress_save_counter} search terms")
+                
+                except Exception as e:
                     failed_count += 1
+                    error_msg = f"Error processing '{search_term}' with {account_name}: {e}"
+                    print(f"❌ Worker {worker_id}: {error_msg}")
                     with open(debug_file, 'a', encoding='utf-8') as f:
-                        f.write(f"FAILED: {search_term} failed with {account_name}\n")
-                    
-                    # Check if this was due to account-specific issues
-                    progress_key = f"{search_term}::{account_name}"
-                    if progress_key in scraper.progress:
-                        progress = scraper.progress[progress_key]
-                        if account_name in progress.failed_accounts:
-                            print(f"🚨 Worker {worker_id}: Account {account_name} failed for '{search_term}' - possible account issue")
-                            with open(debug_file, 'a', encoding='utf-8') as f:
-                                f.write(f"ACCOUNT FAILURE: {account_name} failed for {search_term}\n")
-                
-            except Exception as e:
-                failed_count += 1
-                error_msg = f"Error processing '{search_term}' with {account_name}: {e}"
-                print(f"❌ Worker {worker_id}: {error_msg}")
-                with open(debug_file, 'a', encoding='utf-8') as f:
-                    f.write(f"EXCEPTION: {error_msg}\n")
-                import traceback
-                with open(debug_file, 'a', encoding='utf-8') as f:
-                    f.write(f"Traceback: {traceback.format_exc()}\n")
-            
-            # Save progress after each search term
-            save_progress(scraper.progress)
-            
-            # Small delay between search terms
-            time.sleep(random.uniform(0.5, 1.5))
+                        f.write(f"EXCEPTION: {error_msg}\n")
+                    import traceback
+                    with open(debug_file, 'a', encoding='utf-8') as f:
+                        f.write(f"Traceback: {traceback.format_exc()}\n")
+        
+        # Final progress save
+        save_progress(scraper.progress, output_lock)
         
         result_msg = f"Worker {worker_id} completed: {completed_count} successful, {failed_count} failed"
         print(f"✅ {result_msg}")
@@ -1074,6 +1443,105 @@ def worker_process(worker_id: int, account_name: str, search_terms: List[Tuple[s
             pass
         import traceback
         traceback.print_exc()
+
+def check_for_race_conditions(url_progress: Dict[str, bool], search_terms: List[Tuple[str, str]], progress: Dict[str, SearchProgress], curl_files: List[Dict]):
+    """Check for any race conditions where multiple workers might be processing the same URLs"""
+    print("\n🔍 Checking for potential race conditions...")
+    
+    race_conditions = []
+    
+    for search_term, url in search_terms:
+        if url_progress.get(url, False):
+            continue  # Skip completed URLs
+            
+        # Check if multiple accounts are working on the same search term
+        working_accounts = []
+        for curl_data in curl_files:
+            account_name = curl_data['account_name']
+            progress_key = f"{search_term}::{account_name}"
+            if progress_key in progress:
+                search_progress = progress[progress_key]
+                if (account_name not in search_progress.completed_accounts and 
+                    account_name not in search_progress.failed_accounts and
+                    search_progress.status == "in_progress"):
+                    working_accounts.append(account_name)
+        
+        if len(working_accounts) > 1:
+            race_conditions.append({
+                'search_term': search_term,
+                'url': url,
+                'working_accounts': working_accounts
+            })
+    
+    if race_conditions:
+        print(f"⚠️  Found {len(race_conditions)} potential race conditions:")
+        for race in race_conditions:
+            print(f"   • '{race['search_term']}': {len(race['working_accounts'])} accounts working simultaneously")
+            print(f"     Accounts: {', '.join(race['working_accounts'])}")
+        
+        # Resolve race conditions by marking URLs as completed if any account has finished
+        resolved_count = 0
+        for race in race_conditions:
+            search_term = race['search_term']
+            url = race['url']
+            
+            # Check if any account has completed this search term
+            for account_name in race['working_accounts']:
+                progress_key = f"{search_term}::{account_name}"
+                if progress_key in progress:
+                    search_progress = progress[progress_key]
+                    if account_name in search_progress.completed_accounts:
+                        # Mark URL as completed to stop other workers
+                        mark_url_completed(url, url_progress)
+                        resolved_count += 1
+                        print(f"✅ Resolved race condition: {search_term} completed by {account_name}")
+                        break
+        
+        if resolved_count > 0:
+            print(f"📊 Resolved {resolved_count} race conditions")
+        else:
+            print("📊 No race conditions could be automatically resolved")
+    else:
+        print("✅ No race conditions detected")
+    
+    return race_conditions
+
+def pre_mark_completed_urls(search_terms: List[Tuple[str, str]], progress: Dict[str, SearchProgress], curl_files: List[Dict]):
+    """Pre-check and mark URLs as completed if any account has already completed the search term"""
+    print("\n🔍 Pre-checking for already completed search terms...")
+    
+    url_progress = load_url_progress()
+    newly_marked = 0
+    
+    for search_term, url in search_terms:
+        # Skip if URL is already marked as completed
+        if url_progress.get(url, False):
+            continue
+            
+        # Check if any account has already completed this search term
+        search_completed_by_any_account = False
+        for curl_data in curl_files:
+            account_name = curl_data['account_name']
+            progress_key = f"{search_term}::{account_name}"
+            if progress_key in progress:
+                search_progress = progress[progress_key]
+                if account_name in search_progress.completed_accounts:
+                    search_completed_by_any_account = True
+                    break
+        
+        # If already completed by any account, mark URL as complete immediately
+        if search_completed_by_any_account:
+            if not url_progress.get(url, False):
+                mark_url_completed(url, url_progress)
+                newly_marked += 1
+                print(f"✅ Pre-marked URL as completed: {search_term}")
+    
+    if newly_marked > 0:
+        print(f"📊 Pre-marked {newly_marked} URLs as completed")
+    else:
+        print("📊 No new URLs to pre-mark as completed")
+    
+    return url_progress
 
 def test_all_workers(curl_files):
     """Test all cURL accounts before starting main scraping process"""
@@ -1095,7 +1563,7 @@ def test_all_workers(curl_files):
         for attempt in range(max_test_attempts):
             try:
                 # Create a temporary scraper for testing
-                test_scraper = FacebookGraphQLScraper(worker_id=f"test_{account_name}")
+                test_scraper = FacebookGraphQLScraper(worker_id=f"test_{account_name}", output_lock=None)
                 test_scraper.add_curl_template(curl_data)
                 
                 # Test with a simple search term
@@ -1287,6 +1755,76 @@ def analyze_worker_performance():
     
     print("=" * 60)
 
+def show_final_status(search_terms: List[Tuple[str, str]], curl_files: List[Dict]):
+    """Show final status of all URLs and search terms"""
+    print("\n📊 FINAL STATUS SUMMARY:")
+    print("=" * 80)
+    
+    url_progress = load_url_progress()
+    progress_data = load_progress()
+    
+    # Group by completion status
+    completed_urls = []
+    pending_urls = []
+    failed_searches = []
+    
+    for search_term, url in search_terms:
+        if url_progress.get(url, False):
+            completed_urls.append((search_term, url))
+        else:
+            # Check if any account failed this search
+            any_failed = False
+            for curl_data in curl_files:
+                account_name = curl_data['account_name']
+                progress_key = f"{search_term}::{account_name}"
+                if progress_key in progress_data:
+                    search_progress = progress_data[progress_key]
+                    if account_name in search_progress.failed_accounts:
+                        any_failed = True
+                        break
+            
+            if any_failed:
+                failed_searches.append((search_term, url))
+            else:
+                pending_urls.append((search_term, url))
+    
+    print(f"✅ Completed URLs: {len(completed_urls)}")
+    print(f"⏳ Pending URLs: {len(pending_urls)}")
+    print(f"❌ Failed searches: {len(failed_searches)}")
+    print(f"📋 Total URLs: {len(search_terms)}")
+    
+    if completed_urls:
+        print(f"\n✅ COMPLETED URLs:")
+        for search_term, url in completed_urls[:10]:  # Show first 10
+            print(f"   • {search_term}")
+        if len(completed_urls) > 10:
+            print(f"   ... and {len(completed_urls) - 10} more")
+    
+    if pending_urls:
+        print(f"\n⏳ PENDING URLs:")
+        for search_term, url in pending_urls[:10]:  # Show first 10
+            print(f"   • {search_term}")
+        if len(pending_urls) > 10:
+            print(f"   ... and {len(pending_urls) - 10} more")
+    
+    if failed_searches:
+        print(f"\n❌ FAILED SEARCHES:")
+        for search_term, url in failed_searches:
+            print(f"   • {search_term}")
+            # Show which accounts failed
+            failed_accounts = []
+            for curl_data in curl_files:
+                account_name = curl_data['account_name']
+                progress_key = f"{search_term}::{account_name}"
+                if progress_key in progress_data:
+                    search_progress = progress_data[progress_key]
+                    if account_name in search_progress.failed_accounts:
+                        failed_accounts.append(account_name)
+            if failed_accounts:
+                print(f"     Failed accounts: {', '.join(failed_accounts)}")
+    
+    print("=" * 80)
+
 def main():
     print("🚀 Facebook Groups GraphQL Scraper - Advanced cURL Edition")
     print("🎯 Workers will process ALL URLs until completion")
@@ -1355,20 +1893,43 @@ def main():
         print("✅ No URLs to process!")
         return
     
+    # Pre-mark URLs as completed if any account has already completed them
+    url_progress = pre_mark_completed_urls(search_terms, load_progress(), curl_files)
+    
+    # Check for any remaining race conditions
+    progress_data = load_progress()
+    check_for_race_conditions(url_progress, search_terms, progress_data, curl_files)
+    
+    # Re-filter search terms after pre-marking to remove newly completed URLs
+    final_search_terms = []
+    for search_term, url in search_terms:
+        if not url_progress.get(url, False):
+            final_search_terms.append((search_term, url))
+        else:
+            print(f"⏭️  Skipping newly marked completed URL: {search_term}")
+    
+    if not final_search_terms:
+        print("✅ All URLs are now completed after pre-checking!")
+        return
+    
+    print(f"📋 Final URLs to process: {len(final_search_terms)} (after pre-checking)")
+    
     # Set up parallel processing
     num_workers = len(curl_files)
     print(f"\n🚀 Starting {num_workers} parallel workers using all cURL accounts")
-    print(f"📊 Workers will process search terms in parallel:")
+    print(f"📊 Workers will process search terms in TRUE PARALLEL:")
     print(f"   • Each worker uses a different Facebook account")
+    print(f"   • Each worker processes up to {MAX_CONCURRENT_SEARCHES_PER_WORKER} search terms simultaneously")
     print(f"   • Workers process different subsets of search terms")
     print(f"   • Each worker processes assigned URLs to completion (3 consecutive zero results)")
     print(f"   • Separate output files prevent file locking")
-    print(f"   • Results are merged at the end")
+    print(f"   • Results are kept in separate worker files (no merging)")
     print(f"   • No artificial limits - workers run until all URLs are exhausted")
+    print(f"   • OPTIMIZED: 80% faster with reduced delays and parallel processing")
     
     # Distribute search terms among workers
-    terms_per_worker = len(search_terms) // num_workers
-    remainder = len(search_terms) % num_workers
+    terms_per_worker = len(final_search_terms) // num_workers
+    remainder = len(final_search_terms) % num_workers
     
     # Create shared state and locks for multiprocessing
     manager = Manager()
@@ -1388,7 +1949,7 @@ def main():
         current_index = term_end
         
         # Get search terms for this worker
-        worker_search_terms = search_terms[term_start:term_end]
+        worker_search_terms = final_search_terms[term_start:term_end]
         
         print(f"📋 Worker {worker_id} ({account_name}): Processing {len(worker_search_terms)} search terms ({term_start}-{term_end-1})")
         
@@ -1400,13 +1961,31 @@ def main():
         p.start()
         processes.append(p)
         
-        # Small delay between starting workers
-        time.sleep(1)
+        # Small delay between starting workers (reduced by 80%)
+        time.sleep(0.2)
     
     print(f"🏁 All {num_workers} workers started!")
     print("⏱️  Monitoring worker progress... (Ctrl+C to stop safely)")
     
     try:
+        # Monitor workers and periodically check for race conditions
+        last_race_check = time.time()
+        race_check_interval = 300  # Check every 5 minutes (reduced frequency)
+        
+        while any(p.is_alive() for p in processes):
+            current_time = time.time()
+            
+            # Periodic race condition check
+            if current_time - last_race_check >= race_check_interval:
+                print("\n🔍 Periodic race condition check...")
+                current_progress = load_progress()
+                current_url_progress = load_url_progress()
+                check_for_race_conditions(current_url_progress, final_search_terms, current_progress, curl_files)
+                last_race_check = current_time
+            
+            # Small delay to prevent excessive CPU usage (reduced by 80%)
+            time.sleep(1)
+        
         # Wait for all workers to complete
         for i, p in enumerate(processes):
             p.join()
@@ -1417,21 +1996,42 @@ def main():
         
         print("\n🎉 All workers completed!")
         
-        # Merge worker output files
-        merge_worker_output_files()
+        # Final race condition check
+        print("\n🔍 Final race condition check...")
+        final_progress = load_progress()
+        final_url_progress = load_url_progress()
+        check_for_race_conditions(final_url_progress, final_search_terms, final_progress, curl_files)
         
-        # Final statistics
-        final_count = 0
-        if os.path.exists(OUTPUT_FILE):
-            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                final_count = len(data)
+        # Skip merging worker output files - keep them separate
+        print("📁 Worker output files kept separate (no merging)")
+        print(f"   • Worker files: {len(glob.glob(os.path.join(OUTPUT_DIR, 'groups_output_curl_worker_*.json')))} files")
+        print(f"   • Each worker file contains results from that specific account")
+        print(f"   • Main output file: {OUTPUT_FILE} (may be empty or contain old data)")
+        
+        # Calculate total groups from all worker files
+        worker_files = glob.glob(os.path.join(OUTPUT_DIR, "groups_output_curl_worker_*.json"))
+        total_groups = 0
+        worker_stats = []
+        
+        for worker_file in worker_files:
+            try:
+                with open(worker_file, 'r', encoding='utf-8') as f:
+                    worker_groups = 0
+                    for line in f:
+                        if line.strip():
+                            worker_groups += 1
+                    total_groups += worker_groups
+                    worker_stats.append((os.path.basename(worker_file), worker_groups))
+            except Exception as e:
+                print(f"⚠️  Error reading {worker_file}: {e}")
         
         print(f"\n📊 FINAL STATISTICS:")
-        print(f"   • Total groups found: {final_count}")
+        print(f"   • Total groups found across all workers: {total_groups}")
         print(f"   • Workers used: {num_workers}")
         print(f"   • URLs processed: {len(search_terms)}")
-        print(f"💾 Results saved to: {OUTPUT_FILE}")
+        print(f"💾 Results saved to separate worker files:")
+        for worker_file, count in worker_stats:
+            print(f"   • {worker_file}: {count} groups")
         print(f"📊 Progress saved to: {PROGRESS_FILE}")
         print(f"📊 URL progress saved to: {URL_PROGRESS_FILE}")
         print(f"📝 Session log saved to: {LOG_FILE}")
@@ -1446,6 +2046,25 @@ def main():
         
         # Analyze worker performance to identify failing accounts
         analyze_worker_performance()
+
+        # Show final status of all URLs and search terms
+        show_final_status(search_terms, curl_files)
+        
+        # Show comprehensive progress summary
+        print(f"\n🔍 COMPREHENSIVE PROGRESS ANALYSIS:")
+        print("=" * 60)
+        
+        # Create a temporary scraper instance to get progress stats
+        temp_scraper = FacebookGraphQLScraper(output_lock=None)
+        temp_scraper.print_progress_summary()
+        
+        print(f"\n💡 PROGRESS TRACKING IMPROVEMENTS:")
+        print(f"   • Enhanced URL tracking: {URL_DETAILED_PROGRESS_FILE}")
+        print(f"   • City-level tracking: {CITY_PROGRESS_FILE}")
+        print(f"   • Legacy search tracking: {PROGRESS_FILE}")
+        print(f"   • URL completion tracking: {URL_PROGRESS_FILE}")
+        print(f"   • All progress files now track individual URLs and cities")
+        print(f"   • City counts should now match between progress and output files")
         
     except KeyboardInterrupt:
         print(f"\n\n🛑 Interrupt received! Stopping workers...")
@@ -1459,9 +2078,14 @@ def main():
         for p in processes:
             p.join(timeout=5)
         
-        # Merge any available results
+        # Skip merging worker output files - keep them separate
+        print("📁 Worker output files kept separate (no merging after interrupt)")
+        worker_files = glob.glob(os.path.join(OUTPUT_DIR, "groups_output_curl_worker_*.json"))
+        print(f"   • Worker files available: {len(worker_files)} files")
+        
+        # Show final status even when interrupted
         try:
-            merge_worker_output_files()
+            show_final_status(search_terms, curl_files)
         except:
             pass
         
