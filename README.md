@@ -11,13 +11,15 @@ This project is designed to systematically discover and collect Facebook groups 
 ```
 facebook/
 ├── scripts/                          # Main Python scripts
-│   ├── GRAPHQL_Initial_Curl_Scraper.py    # Initial group discovery
-│   ├── GRAPHQL_Hovercard_Curl_Enricher.py # Data enrichment
-│   ├── GRAPHQL_Pagination_Curl_Scraper.py # Pagination handling
-│   └── php/                         # PHP-based scrapers
+│   ├── GRAPHQL_Initial_Curl_Scraper.py    # Initial group discovery and enrichment
+│   ├── GRAPHQL_Hovercard_Curl_Enricher.py # Data enrichment with hovercard info
+│   ├── GRAPHQL_Pagination_Curl_Scraper.py # Advanced pagination scraper
+│   └── php/                         # PHP-based scrapers (alternative implementation)
+│       ├── facebook_groups_scraper.php
+│       └── enrich_groups_with_hovercard.php
 ├── settings/                         # Configuration files
-│   ├── accounts.json               # Facebook account credentials
-│   ├── proxy_settings.json        # Proxy configuration
+│   ├── bought_accounts.json        # Facebook account credentials
+│   ├── nimbleway_settings.json    # Proxy configuration
 │   ├── curl/                       # cURL session data per account
 │   └── cookies/                    # Browser cookies per account
 ├── output/                          # Generated data files
@@ -55,50 +57,64 @@ facebook/
 ## 🛠️ Setup and Installation
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.11+ (for Python scripts)
+- PHP 7.4+ (for PHP scripts, optional)
 - Facebook accounts
 - Proxy service account (optional)
 
 ### Installation
 1. Clone the repository
-2. Install dependencies:
+2. Install Python dependencies:
    ```bash
    pip install requests urllib3 multiprocessing
    ```
-3. Set up proxy settings in `settings/proxy_settings.json` (optional)
+3. Configure accounts in `settings/bought_accounts.json`
+4. Set up proxy settings in `settings/nimbleway_settings.json` (optional)
 
 ## 🚀 Usage
 
-### 1. Initial Group Discovery
+### Python Scripts
+
+#### 1. Initial Group Discovery and Enrichment
 ```bash
 python scripts/GRAPHQL_Initial_Curl_Scraper.py
 ```
 - Searches for groups using location terms
-- Outputs to `output/initial_searches/initial_searches.json`
+- Enriches data with hovercard information
+- Outputs to `output/initial_searches/initial_searches_enriched.jsonl`
 - Uses multiple accounts with load balancing
 
-### 2. Data Enrichment
+#### 2. Data Enrichment (cURL Output)
 ```bash
 python scripts/GRAPHQL_Hovercard_Curl_Enricher.py
 ```
-- Enriches group data with additional information
+- Enriches existing group data with additional information
 - Adds member counts, descriptions, and metadata
 - Outputs to `output/curl/groups_output_enriched.jsonl`
 
-### 3. Missing Groups Search
+#### 3. Advanced Pagination Scraper
 ```bash
-python scripts/facebook_groups_curl_scraper_missing.py
+python scripts/GRAPHQL_Pagination_Curl_Scraper.py
 ```
-- Searches for groups not found in initial searches
-- Uses CSV file with missing location terms
-- Outputs to `output/curl/missing_groups.jsonl`
+- Advanced scraper with comprehensive pagination handling
+- Processes large datasets with progress tracking
+- Outputs to `output/curl/groups_output_curl.json`
 
-### 4. Data Combination
+### PHP Scripts (Alternative Implementation)
+
+#### 1. PHP Group Scraper
 ```bash
-python scripts/combine_missing_with_super.py
+php scripts/php/facebook_groups_scraper.php
 ```
-- Combines all datasets into final output
-- Creates `output/super/super_missing_added.jsonl`
+- PHP port of the main scraper functionality
+- Alternative implementation for different environments
+
+#### 2. PHP Data Enrichment
+```bash
+php scripts/php/enrich_groups_with_hovercard.php
+```
+- PHP port of the data enrichment functionality
+- Adds hovercard data to existing group records
 
 ## 📊 Data Output
 
@@ -119,21 +135,22 @@ Each group entry contains:
 ```
 
 ### Output Files
-- `groups_output_enriched.jsonl`: Main enriched dataset
-- `missing_groups_enriched.jsonl`: Additional groups found
-- `super_missing_added.jsonl`: Combined final dataset
+- `initial_searches_enriched.jsonl`: Initial search results with enrichment
+- `groups_output_enriched.jsonl`: Main enriched dataset from cURL scraper
+- `groups_output_curl.json`: Advanced pagination scraper output
+- `SUPER_GROUPS_MISSING_ADDED.jsonl`: Combined final dataset
 - Progress files: Track completion status for resumability
 
 ## ⚙️ Configuration
 
 ### Proxy Settings
-Configure in `settings/proxy_settings.json`:
+Configure in `settings/nimbleway_settings.json`:
 ```json
 {
   "accountName": "your_account",
   "pipelineName": "pipeline_name",
   "pipelinePassword": "password",
-  "host": "proxy.example.com",
+  "host": "ip.nimbleway.com",
   "port": "7000"
 }
 ```
